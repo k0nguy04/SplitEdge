@@ -72,7 +72,8 @@ class GamesImportStore(Protocol):
         import_type: str,
         season: str,
         resource: str,
-        rows: list[dict[str, Any]],
+        rows: list[dict[str, Any]] | None = None,
+        payload: Any = None,
     ) -> None: ...
 
     def persist_games_and_complete(
@@ -83,6 +84,7 @@ class GamesImportStore(Protocol):
         games: list[NormalizedGame],
         stats: list[NormalizedPlayerGameStat],
         seasons: tuple[str, ...],
+        used_checkpoints: tuple[tuple[str, str], ...],
         records_processed: int,
         records_failed: int,
         details: dict[str, Any],
@@ -185,7 +187,8 @@ class PostgresImportStore:
         import_type: str,
         season: str,
         resource: str,
-        rows: list[dict[str, Any]],
+        rows: list[dict[str, Any]] | None = None,
+        payload: Any = None,
     ) -> None:
         with connection(self._database_url) as conn:
             write_fetched_checkpoint(
@@ -194,6 +197,7 @@ class PostgresImportStore:
                 season=season,
                 resource=resource,
                 rows=rows,
+                payload=payload,
             )
             conn.commit()
 
@@ -205,10 +209,12 @@ class PostgresImportStore:
         games: list[NormalizedGame],
         stats: list[NormalizedPlayerGameStat],
         seasons: tuple[str, ...],
+        used_checkpoints: tuple[tuple[str, str], ...],
         records_processed: int,
         records_failed: int,
         details: dict[str, Any],
     ) -> int:
+        del seasons
         with connection(self._database_url) as conn:
             with conn.transaction():
                 inserted = insert_historical_stubs(conn, stubs)
@@ -217,7 +223,7 @@ class PostgresImportStore:
                 mark_checkpoints_persisted(
                     conn,
                     import_type="GAMES_STATS",
-                    seasons=seasons,
+                    used_checkpoints=used_checkpoints,
                 )
                 details = {**details, "historical_players_inserted": inserted}
                 update_completed(

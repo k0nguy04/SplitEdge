@@ -42,14 +42,10 @@ def normalize_player_stats(
         game_id = normalize_game_id(raw.get("GAME_ID"))
         player_id = parse_positive_id(raw.get("PLAYER_ID"))
         if player_id is None:
-            rejected.append(
-                RejectedRecord(reason="missing_id", entity="player_stat", raw=dict(raw))
-            )
+            rejected.append(_reject("missing_id", raw, season))
             continue
         if game_id is None:
-            rejected.append(
-                RejectedRecord(reason="missing_game", entity="player_stat", raw=dict(raw))
-            )
+            rejected.append(_reject("missing_game", raw, season))
             continue
         if not is_regular_season_game_id(game_id):
             skipped_non_regular += 1
@@ -57,9 +53,7 @@ def normalize_player_stats(
         pair = (player_id, game_id)
         if pair in seen:
             duplicate_ids = True
-            rejected.append(
-                RejectedRecord(reason="duplicate_id", entity="player_stat", raw=dict(raw))
-            )
+            rejected.append(_reject("duplicate_id", raw, season, game_id))
             continue
         seen.add(pair)
 
@@ -68,33 +62,23 @@ def normalize_player_stats(
             skipped_dnp += 1
             continue
         if minutes is None:
-            rejected.append(
-                RejectedRecord(reason="malformed_minutes", entity="player_stat", raw=dict(raw))
-            )
+            rejected.append(_reject("malformed_minutes", raw, season, game_id))
             continue
 
         game = games_by_id.get(game_id)
         if game is None:
-            rejected.append(
-                RejectedRecord(reason="unknown_game", entity="player_stat", raw=dict(raw))
-            )
+            rejected.append(_reject("unknown_game", raw, season, game_id))
             continue
 
         team_id = parse_positive_id(raw.get("TEAM_ID"))
         if team_id is None:
-            rejected.append(
-                RejectedRecord(reason="missing_team", entity="player_stat", raw=dict(raw))
-            )
+            rejected.append(_reject("missing_team", raw, season, game_id))
             continue
         if team_id not in known_team_ids:
-            rejected.append(
-                RejectedRecord(reason="unknown_team", entity="player_stat", raw=dict(raw))
-            )
+            rejected.append(_reject("unknown_team", raw, season, game_id))
             continue
         if team_id not in {game.home_nba_team_id, game.away_nba_team_id}:
-            rejected.append(
-                RejectedRecord(reason="team_not_in_game", entity="player_stat", raw=dict(raw))
-            )
+            rejected.append(_reject("team_not_in_game", raw, season, game_id))
             continue
 
         points = parse_id(raw.get("PTS"))
@@ -102,28 +86,20 @@ def normalize_player_stats(
         assists = parse_id(raw.get("AST"))
         threes = parse_id(raw.get("FG3M"))
         if None in {points, rebounds, assists, threes}:
-            rejected.append(
-                RejectedRecord(reason="missing_stat", entity="player_stat", raw=dict(raw))
-            )
+            rejected.append(_reject("missing_stat", raw, season, game_id))
             continue
         assert points is not None and rebounds is not None
         assert assists is not None and threes is not None
         if min(points, rebounds, assists, threes) < 0:
-            rejected.append(
-                RejectedRecord(reason="negative_stat", entity="player_stat", raw=dict(raw))
-            )
+            rejected.append(_reject("negative_stat", raw, season, game_id))
             continue
 
         player_name = trim(raw.get("PLAYER_NAME"))
         if not player_name:
-            rejected.append(
-                RejectedRecord(reason="missing_name", entity="player_stat", raw=dict(raw))
-            )
+            rejected.append(_reject("missing_name", raw, season, game_id))
             continue
         if len(player_name) > MAX_STUB_NAME_LENGTH:
-            rejected.append(
-                RejectedRecord(reason="name_too_long", entity="player_stat", raw=dict(raw))
-            )
+            rejected.append(_reject("name_too_long", raw, season, game_id))
             continue
 
         valid.append(
@@ -142,6 +118,21 @@ def normalize_player_stats(
         )
 
     return valid, rejected, skipped_dnp, skipped_non_regular, duplicate_ids
+
+
+def _reject(
+    reason: str,
+    raw: dict[str, Any],
+    season: str,
+    nba_game_id: str | None = None,
+) -> RejectedRecord:
+    return RejectedRecord(
+        reason=reason,
+        entity="player_stat",
+        raw=dict(raw),
+        season=season,
+        nba_game_id=nba_game_id or normalize_game_id(raw.get("GAME_ID")),
+    )
 
 
 def stubs_for_unknown_players(

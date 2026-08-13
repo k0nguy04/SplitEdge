@@ -34,7 +34,7 @@ class IntegrationDatabaseError(RuntimeError):
     """Raised when integration tests are pointed at the primary database."""
 
 
-def load_fixture(name: str) -> list[dict[str, Any]]:
+def load_fixture(name: str) -> Any:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
@@ -54,19 +54,24 @@ class FakeNbaSource:
         fail_players: Exception | None = None,
         fail_team_log: Exception | None = None,
         fail_player_log: Exception | None = None,
+        fail_summary: Exception | None = None,
+        summaries: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self.teams = teams if teams is not None else load_fixture("teams.json")
         self.players = players if players is not None else load_fixture("players_valid.json")
         self.team_logs = team_logs
         self.player_logs = player_logs
+        self.summaries = summaries
         self.fail_teams = fail_teams
         self.fail_players = fail_players
         self.fail_team_log = fail_team_log
         self.fail_player_log = fail_player_log
+        self.fail_summary = fail_summary
         self.team_calls = 0
         self.player_calls = 0
         self.team_log_calls: list[str] = []
         self.player_log_calls: list[str] = []
+        self.summary_calls: list[str] = []
 
     def fetch_teams(self) -> list[dict]:
         self.team_calls += 1
@@ -96,6 +101,14 @@ class FakeNbaSource:
         if self.player_logs is not None and season in self.player_logs:
             return self.player_logs[season]
         return _season_fixture("player_game_log", season)
+
+    def fetch_box_score_summary(self, game_id: str) -> dict:
+        self.summary_calls.append(game_id)
+        if self.fail_summary is not None:
+            raise self.fail_summary
+        if self.summaries is not None and game_id in self.summaries:
+            return dict(self.summaries[game_id])
+        raise KeyError(f"no box score summary fixture for {game_id}")
 
 
 class FakeImportStore:
@@ -204,15 +217,20 @@ class FakeGamesStore:
         import_type: str,
         season: str,
         resource: str,
-        rows: list[dict[str, Any]],
+        rows: list[dict[str, Any]] | None = None,
+        payload: Any = None,
     ) -> None:
+        body = payload if payload is not None else rows
+        if body is None:
+            raise ValueError("checkpoint payload is required")
+        row_count = len(body) if isinstance(body, list) else 1
         self.checkpoints[(import_type, season, resource)] = CheckpointRecord(
             import_type=import_type,
             season=season,
             resource=resource,
             status="FETCHED",
-            row_count=len(rows),
-            payload=rows,
+            row_count=row_count,
+            payload=body,
         )
 
     def persist_games_and_complete(
@@ -223,10 +241,12 @@ class FakeGamesStore:
         games: list[NormalizedGame],
         stats: list[NormalizedPlayerGameStat],
         seasons: tuple[str, ...],
+        used_checkpoints: tuple[tuple[str, str], ...],
         records_processed: int,
         records_failed: int,
         details: dict[str, Any],
     ) -> int:
+        del seasons
         if self.fail_persist is not None:
             raise self.fail_persist
         self.stubs = list(stubs)
@@ -237,20 +257,19 @@ class FakeGamesStore:
             if stub.nba_player_id not in self.player_ids:
                 self.player_ids.add(stub.nba_player_id)
                 inserted += 1
-        for season in seasons:
-            for resource in ("team_game_log", "player_game_log"):
-                key = ("GAMES_STATS", season, resource)
-                existing = self.checkpoints.get(key)
-                if existing is None:
-                    continue
-                self.checkpoints[key] = CheckpointRecord(
-                    import_type=existing.import_type,
-                    season=existing.season,
-                    resource=existing.resource,
-                    status="PERSISTED",
-                    row_count=existing.row_count,
-                    payload=None,
-                )
+        for season, resource in used_checkpoints:
+            key = ("GAMES_STATS", season, resource)
+            existing = self.checkpoints.get(key)
+            if existing is None:
+                continue
+            self.checkpoints[key] = CheckpointRecord(
+                import_type=existing.import_type,
+                season=existing.season,
+                resource=existing.resource,
+                status="PERSISTED",
+                row_count=existing.row_count,
+                payload=None,
+            )
         details = {**details, "historical_players_inserted": inserted}
         self.completed.append(
             {

@@ -17,3 +17,6 @@ class NbaSource(Protocol):
 
     def fetch_player_game_log(self, season: str) -> list[dict]:
         """Return LeagueGameLog player-mode rows for ``season``."""
+
+    def fetch_box_score_summary(self, game_id: str) -> dict:
+        """Return BoxScoreSummaryV3 GameSummary fields for ``game_id``."""

@@ -1,0 +1,17 @@
+{
+  "boxScoreSummary": {
+    "gameId": "0022400999",
+    "gameCode": "20241102/BOSGSW",
+    "gameStatus": 3,
+    "gameStatusText": "Final",
+    "period": 4,
+    "gameClock": "PT00M00.00S",
+    "gameTimeUTC": "2024-11-03T03:00:00Z",
+    "gameEt": "2024-11-02T22:00:00Z",
+    "awayTeamId": 1610612738,
+    "homeTeamId": 1610612744,
+    "duration": 130,
+    "attendance": 18000,
+    "sellout": "0"
+  }
+}

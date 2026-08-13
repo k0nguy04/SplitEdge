@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable
 from typing import Any, NoReturn
 
+from splitedge_importer.retrieval.box_score_summary import SummaryParseError, extract_game_summary
 from splitedge_importer.retrieval.league_game_log import required_columns_for
 from splitedge_importer.retrieval.retry import (
     NonRetryableHttpError,
@@ -18,7 +19,7 @@ REGULAR_SEASON = "Regular Season"
 
 
 class MalformedNbaPayload(ValueError):
-    """HTTP 200 body that is empty or missing required LeagueGameLog columns."""
+    """HTTP 200 body that is empty or missing required source columns."""
 
 
 def _rows_from_nba_dict(payload: dict[str, Any]) -> list[dict]:
@@ -51,6 +52,16 @@ def _rows_from_league_game_log(payload: dict[str, Any], *, resource: str) -> lis
         if not required.issubset(row.keys()):
             raise MalformedNbaPayload(f"LeagueGameLog {resource} is missing required columns")
     return rows
+
+
+def _game_summary_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        extracted = extract_game_summary(payload)
+    except SummaryParseError as exc:
+        raise MalformedNbaPayload(str(exc)) from exc
+    if extracted.get("gameId") in (None, ""):
+        raise MalformedNbaPayload("BoxScoreSummaryV3 payload missing gameId")
+    return extracted
 
 
 class NbaApiClient:
@@ -102,6 +113,17 @@ class NbaApiClient:
     def fetch_player_game_log(self, season: str) -> list[dict]:
         return self._fetch_league_game_log(season, player_or_team="P", resource="player_game_log")
 
+    def fetch_box_score_summary(self, game_id: str) -> dict:
+        def _build() -> Any:
+            from nba_api.stats.endpoints import boxscoresummaryv3
+
+            return boxscoresummaryv3.BoxScoreSummaryV3(
+                game_id=game_id,
+                timeout=self._timeout_seconds,
+            )
+
+        return self._request(_build, parser=_game_summary_from_payload)
+
     def _fetch_league_game_log(
         self,
         season: str,
@@ -123,7 +145,7 @@ class NbaApiClient:
         def _parse(payload: dict[str, Any]) -> list[dict]:
             return _rows_from_league_game_log(payload, resource=resource)
 
-        return self._request_rows(_build, parser=_parse)
+        return self._request(_build, parser=_parse)
 
     def _request_rows(
         self,
@@ -131,7 +153,15 @@ class NbaApiClient:
         *,
         parser: Callable[[dict[str, Any]], list[dict]],
     ) -> list[dict]:
-        def _call() -> list[dict]:
+        return self._request(build_endpoint, parser=parser)
+
+    def _request[T](
+        self,
+        build_endpoint: Callable[[], Any],
+        *,
+        parser: Callable[[dict[str, Any]], T],
+    ) -> T:
+        def _call() -> T:
             from nba_api.stats.library.http import NBAStatsHTTP
 
             original = NBAStatsHTTP.send_api_request
@@ -172,14 +202,14 @@ class NbaApiClient:
             finally:
                 NBAStatsHTTP.send_api_request = original  # type: ignore[method-assign]
 
-        rows = self._retry(
+        payload = self._retry(
             _call,
             max_attempts=self._retry_max_attempts,
             base_delay_seconds=self._retry_base_delay_seconds,
             max_delay_seconds=self._retry_max_delay_seconds,
         )
         self._pace()
-        return rows
+        return payload
 
     def _pace(self) -> None:
         now = self._monotonic()

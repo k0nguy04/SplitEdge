@@ -11,7 +11,7 @@ from splitedge_importer.normalization.player_stats import (
 
 
 def _games() -> list[NormalizedGame]:
-    games, _, _, _ = normalize_games(
+    games, _, _, _, _ = normalize_games(
         load_fixture("team_game_log_2023_24.json"),
         season="2023-24",
         known_team_ids=KNOWN_TEAM_IDS,

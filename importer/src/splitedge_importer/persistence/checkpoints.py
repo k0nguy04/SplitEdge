@@ -9,7 +9,13 @@ from psycopg.types.json import Jsonb
 
 from splitedge_importer.models import CheckpointRecord
 from splitedge_importer.redact import json_safe
-from splitedge_importer.retrieval.league_game_log import required_columns_for
+from splitedge_importer.retrieval.box_score_summary import (
+    REFETCH_SUMMARY_REASONS,
+    HomeAwayResolverError,
+    is_summary_resource,
+    validate_game_summary,
+)
+from splitedge_importer.retrieval.league_game_log import REQUIRED_COLUMNS, required_columns_for
 
 
 def load_checkpoint(
@@ -44,9 +50,13 @@ def save_fetched_checkpoint(
     import_type: str,
     season: str,
     resource: str,
-    rows: list[dict[str, Any]],
+    rows: list[dict[str, Any]] | None = None,
+    payload: Any = None,
 ) -> None:
-    payload = json_safe(rows)
+    body = payload if payload is not None else rows
+    if body is None:
+        raise ValueError("checkpoint payload is required")
+    row_count = len(body) if isinstance(body, list) else 1
     conn.execute(
         """
         INSERT INTO import_checkpoints (
@@ -59,7 +69,7 @@ def save_fetched_checkpoint(
             payload = EXCLUDED.payload,
             updated_at = NOW()
         """,
-        (import_type, season, resource, len(rows), Jsonb(payload)),
+        (import_type, season, resource, row_count, Jsonb(json_safe(body))),
     )
 
 
@@ -67,21 +77,21 @@ def mark_checkpoints_persisted(
     conn: Connection,
     *,
     import_type: str,
-    seasons: tuple[str, ...],
-    resources: tuple[str, ...] = ("team_game_log", "player_game_log"),
+    used_checkpoints: tuple[tuple[str, str], ...],
 ) -> None:
-    conn.execute(
-        """
-        UPDATE import_checkpoints
-        SET status = 'PERSISTED',
-            payload = NULL,
-            updated_at = NOW()
-        WHERE import_type = %s
-          AND season = ANY(%s)
-          AND resource = ANY(%s)
-        """,
-        (import_type, list(seasons), list(resources)),
-    )
+    for season, resource in used_checkpoints:
+        conn.execute(
+            """
+            UPDATE import_checkpoints
+            SET status = 'PERSISTED',
+                payload = NULL,
+                updated_at = NOW()
+            WHERE import_type = %s
+              AND season = %s
+              AND resource = %s
+            """,
+            (import_type, season, resource),
+        )
 
 
 def reusable_fetched_rows(
@@ -102,6 +112,8 @@ def reusable_fetched_rows(
         return None
     if checkpoint.resource != resource:
         return None
+    if resource not in REQUIRED_COLUMNS or is_summary_resource(resource):
+        return None
     rows = _payload_as_rows(checkpoint.payload)
     if not rows:
         return None
@@ -110,6 +122,42 @@ def reusable_fetched_rows(
         if not required.issubset(row.keys()):
             return None
     return rows
+
+
+def reusable_fetched_summary(
+    checkpoint: CheckpointRecord | None,
+    *,
+    import_type: str,
+    season: str,
+    resource: str,
+    requested_game_id: str,
+    log_team_ids: set[int],
+) -> dict[str, Any] | None:
+    """Return a validated GameSummary dict only for a reusable FETCHED checkpoint."""
+    if checkpoint is None:
+        return None
+    if checkpoint.status != "FETCHED":
+        return None
+    if checkpoint.import_type != import_type:
+        return None
+    if checkpoint.season != season:
+        return None
+    if checkpoint.resource != resource:
+        return None
+    payload = checkpoint.payload
+    if not isinstance(payload, dict) or not payload:
+        return None
+    try:
+        return validate_game_summary(
+            payload,
+            requested_game_id=requested_game_id,
+            log_team_ids=log_team_ids,
+            season=season,
+        )
+    except HomeAwayResolverError as exc:
+        if exc.reason in REFETCH_SUMMARY_REASONS:
+            return None
+        raise
 
 
 def _payload_as_rows(payload: Any) -> list[dict[str, Any]] | None:

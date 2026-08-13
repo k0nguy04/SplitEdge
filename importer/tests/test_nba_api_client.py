@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from splitedge_importer.retrieval.nba_api_client import (
     MalformedNbaPayload,
+    _game_summary_from_payload,
     _reraise_http_error,
     _rows_from_league_game_log,
     _rows_from_nba_dict,
@@ -79,3 +80,55 @@ def test_league_game_log_requires_rows_and_columns() -> None:
         pass
     else:
         raise AssertionError("expected MalformedNbaPayload")
+
+
+def test_game_summary_from_raw_box_score_summary() -> None:
+    from conftest import load_fixture
+
+    extracted = _game_summary_from_payload(load_fixture("box_score_summary_raw.json"))
+    assert extracted["gameId"] == "0022400999"
+    assert extracted["homeTeamId"] == 1610612744
+    assert extracted["awayTeamId"] == 1610612738
+
+
+def test_game_summary_from_parsed_headers_and_data() -> None:
+    from splitedge_importer.retrieval.box_score_summary import GAME_SUMMARY_HEADERS
+
+    raw = {
+        "gameId": "0022400999",
+        "gameCode": "20241102/BOSGSW",
+        "gameStatus": 3,
+        "gameStatusText": "Final",
+        "period": 4,
+        "gameClock": "",
+        "gameTimeUTC": "",
+        "gameEt": "",
+        "awayTeamId": 1610612738,
+        "homeTeamId": 1610612744,
+        "duration": 130,
+        "attendance": 0,
+        "sellout": "0",
+    }
+    payload = {
+        "headers": list(GAME_SUMMARY_HEADERS),
+        "data": [[raw[key] for key in GAME_SUMMARY_HEADERS]],
+    }
+    extracted = _game_summary_from_payload(payload)
+    assert extracted["gameId"] == "0022400999"
+    assert extracted["gameStatus"] == 3
+
+
+def test_empty_or_malformed_summary_is_not_retryable() -> None:
+    try:
+        _game_summary_from_payload({})
+    except MalformedNbaPayload as exc:
+        assert "empty_summary" in str(exc)
+    else:
+        raise AssertionError("expected MalformedNbaPayload")
+    try:
+        _game_summary_from_payload({"resultSets": []})
+    except MalformedNbaPayload:
+        pass
+    else:
+        raise AssertionError("expected MalformedNbaPayload")
+

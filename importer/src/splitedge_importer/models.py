@@ -29,6 +29,14 @@ class NormalizedPlayer:
 
 
 @dataclass(frozen=True)
+class AmbiguousGame:
+    nba_game_id: str
+    season: str
+    game_date: date
+    team_rows: tuple[dict[str, Any], dict[str, Any]]
+
+
+@dataclass(frozen=True)
 class NormalizedGame:
     nba_game_id: str
     season: str
@@ -77,6 +85,8 @@ class RejectedRecord:
     reason: str
     entity: str
     raw: dict[str, Any]
+    season: str | None = None
+    nba_game_id: str | None = None
 
 
 @dataclass(frozen=True)

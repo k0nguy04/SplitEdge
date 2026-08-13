@@ -8,21 +8,31 @@ from typing import Any
 from splitedge_importer.config import Config
 from splitedge_importer.guards_games import evaluate_games_guards
 from splitedge_importer.models import (
+    AmbiguousGame,
     EntityCounts,
     ImportResult,
     NormalizedGame,
     NormalizedPlayerGameStat,
     RejectedRecord,
 )
-from splitedge_importer.normalization.games import normalize_games
+from splitedge_importer.normalization.games import complete_ambiguous_game, normalize_games
 from splitedge_importer.normalization.player_stats import (
     normalize_player_stats,
     stubs_for_unknown_players,
 )
-from splitedge_importer.persistence.checkpoints import reusable_fetched_rows
+from splitedge_importer.persistence.checkpoints import (
+    reusable_fetched_rows,
+    reusable_fetched_summary,
+)
 from splitedge_importer.persistence.store import GamesImportStore, PostgresImportStore
 from splitedge_importer.redact import json_safe, redact_text
+from splitedge_importer.retrieval.box_score_summary import (
+    HomeAwayResolverError,
+    summary_resource,
+    validate_game_summary,
+)
 from splitedge_importer.retrieval.client import NbaSource
+from splitedge_importer.validation.records import parse_positive_id
 
 IMPORT_TYPE = "GAMES_STATS"
 TEAM_RESOURCE = "team_game_log"
@@ -58,6 +68,7 @@ def run_games_pipeline(
         raw_by_season: dict[str, dict[str, list[dict[str, Any]]]] = {}
         checkpoints_reused = 0
         http_by_season: dict[str, int] = {season: 0 for season in seasons}
+        used_checkpoints: list[tuple[str, str]] = []
 
         for season in seasons:
             season_raw: dict[str, list[dict[str, Any]]] = {}
@@ -76,6 +87,7 @@ def run_games_pipeline(
                 if reused is not None:
                     season_raw[resource] = reused
                     checkpoints_reused += 1
+                    used_checkpoints.append((season, resource))
                     continue
                 rows = fetcher(season)
                 if not rows:
@@ -88,6 +100,7 @@ def run_games_pipeline(
                 )
                 season_raw[resource] = rows
                 http_by_season[season] += 1
+                used_checkpoints.append((season, resource))
             raw_by_season[season] = season_raw
 
         details["stage"] = "validate"
@@ -100,30 +113,47 @@ def run_games_pipeline(
         duplicate_stat_ids = False
         games_received = 0
         stats_received = 0
+        season_player_rows: dict[str, list[dict[str, Any]]] = {}
 
         for season in seasons:
             team_rows = raw_by_season[season][TEAM_RESOURCE]
             player_rows = raw_by_season[season][PLAYER_RESOURCE]
+            season_player_rows[season] = player_rows
             games_received += len(team_rows)
             stats_received += len(player_rows)
-            season_games, game_rejected, game_skipped, game_dupes = normalize_games(
-                team_rows,
-                season=season,
-                known_team_ids=known_team_ids,
+            season_games, season_ambiguous, game_rejected, game_skipped, game_dupes = (
+                normalize_games(
+                    team_rows,
+                    season=season,
+                    known_team_ids=known_team_ids,
+                )
             )
-            season_stats, stat_rejected, dnp, stat_skipped, stat_dupes = normalize_player_stats(
-                player_rows,
-                season=season,
-                games=season_games,
-                known_team_ids=known_team_ids,
+            resolved = _resolve_ambiguous_games(
+                season_ambiguous,
+                source=source,
+                store=data_store,
+                details=details,
+                http_by_season=http_by_season,
+                used_checkpoints=used_checkpoints,
             )
+            checkpoints_reused += resolved.reused
             games.extend(season_games)
-            stats.extend(season_stats)
+            games.extend(resolved.games)
             rejected.extend(game_rejected)
+            skipped_non_regular += game_skipped
+            duplicate_game_ids = duplicate_game_ids or game_dupes
+
+        for season in seasons:
+            season_stats, stat_rejected, dnp, stat_skipped, stat_dupes = normalize_player_stats(
+                season_player_rows[season],
+                season=season,
+                games=games,
+                known_team_ids=known_team_ids,
+            )
+            stats.extend(season_stats)
             rejected.extend(stat_rejected)
             skipped_dnp += dnp
-            skipped_non_regular += game_skipped + stat_skipped
-            duplicate_game_ids = duplicate_game_ids or game_dupes
+            skipped_non_regular += stat_skipped
             duplicate_stat_ids = duplicate_stat_ids or stat_dupes
 
         known_player_ids = data_store.list_player_ids()
@@ -200,6 +230,7 @@ def run_games_pipeline(
             games=games,
             stats=stats,
             seasons=seasons,
+            used_checkpoints=tuple(dict.fromkeys(used_checkpoints)),
             records_processed=records_processed,
             records_failed=records_failed,
             details=persist_details,
@@ -213,6 +244,22 @@ def run_games_pipeline(
             records_failed=records_failed,
             details=persist_details,
         )
+    except HomeAwayResolverError as exc:
+        details["stage"] = "retrieve_box_score_summary"
+        details["resolver"] = {
+            "reason": exc.reason,
+            "season": exc.season,
+            "nba_game_id": exc.nba_game_id,
+        }
+        return _fail(
+            data_store,
+            run_id,
+            records_failed=int(details.get("games", {}).get("rejected", 0))
+            + int(details.get("player_stats", {}).get("rejected", 0)),
+            details=details,
+            error_message=str(exc),
+            secrets=secrets,
+        )
     except Exception as exc:
         details["stage"] = details.get("stage") or "retrieve_team_game_log"
         details.setdefault("guard", {"passed": False, "reason": None})
@@ -225,6 +272,79 @@ def run_games_pipeline(
             error_message=str(exc),
             secrets=secrets,
         )
+
+
+class _ResolvedAmbiguous:
+    def __init__(self, games: list[NormalizedGame], reused: int) -> None:
+        self.games = games
+        self.reused = reused
+
+
+def _resolve_ambiguous_games(
+    ambiguous_games: list[AmbiguousGame],
+    *,
+    source: NbaSource,
+    store: GamesImportStore,
+    details: dict[str, Any],
+    http_by_season: dict[str, int],
+    used_checkpoints: list[tuple[str, str]],
+) -> _ResolvedAmbiguous:
+    resolved: list[NormalizedGame] = []
+    reused_count = 0
+    for ambiguous in ambiguous_games:
+        details["stage"] = "retrieve_box_score_summary"
+        resource = summary_resource(ambiguous.nba_game_id)
+        log_team_ids = {
+            team_id
+            for team_id in (
+                parse_positive_id(row.get("TEAM_ID")) for row in ambiguous.team_rows
+            )
+            if team_id is not None
+        }
+        checkpoint = store.load_checkpoint(IMPORT_TYPE, ambiguous.season, resource)
+        summary = reusable_fetched_summary(
+            checkpoint,
+            import_type=IMPORT_TYPE,
+            season=ambiguous.season,
+            resource=resource,
+            requested_game_id=ambiguous.nba_game_id,
+            log_team_ids=log_team_ids,
+        )
+        if summary is None:
+            try:
+                raw = source.fetch_box_score_summary(ambiguous.nba_game_id)
+            except HomeAwayResolverError:
+                raise
+            except Exception as exc:
+                raise HomeAwayResolverError(
+                    "network_failure",
+                    season=ambiguous.season,
+                    nba_game_id=ambiguous.nba_game_id,
+                ) from exc
+            summary = validate_game_summary(
+                raw,
+                requested_game_id=ambiguous.nba_game_id,
+                log_team_ids=log_team_ids,
+                season=ambiguous.season,
+            )
+            store.save_fetched_checkpoint(
+                import_type=IMPORT_TYPE,
+                season=ambiguous.season,
+                resource=resource,
+                payload=summary,
+            )
+            http_by_season[ambiguous.season] = http_by_season.get(ambiguous.season, 0) + 1
+        else:
+            reused_count += 1
+        used_checkpoints.append((ambiguous.season, resource))
+        resolved.append(
+            complete_ambiguous_game(
+                ambiguous,
+                summary["homeTeamId"],
+                summary["awayTeamId"],
+            )
+        )
+    return _ResolvedAmbiguous(resolved, reused_count)
 
 
 def _fail(
@@ -331,7 +451,14 @@ def _build_details(
                 for season in seasons
             },
             "rejected": [
-                {"reason": item.reason, "entity": item.entity, "raw": item.raw} for item in rejected
+                {
+                    "reason": item.reason,
+                    "entity": item.entity,
+                    "raw": item.raw,
+                    "season": item.season,
+                    "nba_game_id": item.nba_game_id,
+                }
+                for item in rejected
             ],
             "guard": {"passed": guard, "reason": guard_reason},
         }

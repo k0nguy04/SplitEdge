@@ -1,0 +1,32 @@
+[
+  {
+    "GAME_ID": "0022400999",
+    "TEAM_ID": 1610612744,
+    "TEAM_ABBREVIATION": "GSW",
+    "GAME_DATE": "2024-11-02",
+    "MATCHUP": "GSW vs. BOS",
+    "WL": "W",
+    "PTS": 32,
+    "PLAYER_ID": 201939,
+    "PLAYER_NAME": "Stephen Curry",
+    "MIN": "34:10",
+    "REB": 6,
+    "AST": 7,
+    "FG3M": 5
+  },
+  {
+    "GAME_ID": "0022400999",
+    "TEAM_ID": 1610612738,
+    "TEAM_ABBREVIATION": "BOS",
+    "GAME_DATE": "2024-11-02",
+    "MATCHUP": "BOS vs. GSW",
+    "WL": "L",
+    "PTS": 28,
+    "PLAYER_ID": 1628369,
+    "PLAYER_NAME": "Jayson Tatum",
+    "MIN": "36:00",
+    "REB": 8,
+    "AST": 4,
+    "FG3M": 3
+  }
+]
