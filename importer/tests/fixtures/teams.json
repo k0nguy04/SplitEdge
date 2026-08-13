@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1610612744,
+    "full_name": "Golden State Warriors",
+    "abbreviation": "GSW",
+    "nickname": "Warriors",
+    "city": "Golden State"
+  },
+  {
+    "id": 1610612738,
+    "full_name": "Boston Celtics",
+    "abbreviation": "BOS",
+    "nickname": "Celtics",
+    "city": "Boston"
+  },
+  {
+    "id": 1610612747,
+    "full_name": "Los Angeles Lakers",
+    "abbreviation": "LAL",
+    "nickname": "Lakers",
+    "city": "Los Angeles"
+  }
+]

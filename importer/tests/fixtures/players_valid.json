@@ -1,0 +1,20 @@
+[
+  {
+    "PERSON_ID": 201939,
+    "DISPLAY_FIRST_LAST": "Stephen Curry",
+    "ROSTERSTATUS": 1,
+    "TEAM_ID": 1610612744
+  },
+  {
+    "PERSON_ID": 2544,
+    "DISPLAY_FIRST_LAST": "LeBron James",
+    "ROSTERSTATUS": 1,
+    "TEAM_ID": 1610612747
+  },
+  {
+    "PERSON_ID": 1628369,
+    "DISPLAY_FIRST_LAST": "Jayson Tatum",
+    "ROSTERSTATUS": 1,
+    "TEAM_ID": 1610612738
+  }
+]

@@ -6,7 +6,9 @@ SplitEdge is an NBA player-prop research platform that turns historical game dat
 
 ## Repository status
 
-Milestone 0 establishes the project structure and development guardrails. Product calculations and NBA data ingestion begin in Milestone 1.
+Milestone 1 is in progress. The Python importer can load NBA teams and active
+players into PostgreSQL. Games, box scores, and matchup reports are not in this
+slice.
 
 ## Architecture
 
@@ -32,7 +34,11 @@ Milestone 0 establishes the project structure and development guardrails. Produc
 2. Start PostgreSQL with `docker compose -f infra/compose.yaml up -d` if Docker is available.
 3. Start the backend from `backend/` with `mvn spring-boot:run`.
 4. Start the frontend from `frontend/` with `npm install` and `npm run dev`.
-5. Run the importer checks from `importer/` with `python -m pytest` after installing its development dependencies.
+5. Apply database migrations from `backend/` with `mvn flyway:migrate`.
+6. Run importer unit tests from `importer/` with `python -m pip install -e ".[dev]"` and `python -m pytest -m "not integration"`.
+7. Run a live teams-and-players import with `python -m splitedge_importer` after setting `DATABASE_URL` and `NBA_SEASON`. Automated tests never call NBA endpoints; they use fixture data.
+
+Schema changes are applied only through Flyway. Do not run the SQL migration files directly.
 
 The application is designed to support a $0/month portfolio deployment. No paid sports feed, odds provider, or AI API is required.
 

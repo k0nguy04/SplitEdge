@@ -47,8 +47,34 @@ jobs:
 
   importer:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: splitedge_test
+          POSTGRES_USER: splitedge
+          POSTGRES_PASSWORD: splitedge_local
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U splitedge -d splitedge_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://splitedge:splitedge_local@localhost:5432/splitedge_test
+      NBA_SEASON: "2025-26"
+      FLYWAY_URL: jdbc:postgresql://localhost:5432/splitedge_test
+      POSTGRES_USER: splitedge
+      POSTGRES_PASSWORD: splitedge_local
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -56,10 +82,17 @@ jobs:
           cache-dependency-path: importer/pyproject.toml
       - name: Install importer
         working-directory: importer
-        run: python -m pip install -e '.[dev]'
+        run: python -m pip install -e ".[dev]"
       - name: Lint importer
         working-directory: importer
         run: python -m ruff check .
+      - name: Apply Flyway migrations
+        working-directory: backend
+        run: >
+          mvn --batch-mode flyway:migrate
+          -Dflyway.url=jdbc:postgresql://localhost:5432/splitedge_test
+          -Dflyway.user=splitedge
+          -Dflyway.password=splitedge_local
       - name: Test importer
         working-directory: importer
         run: python -m pytest

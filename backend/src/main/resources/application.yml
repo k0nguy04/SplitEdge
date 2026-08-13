@@ -2,7 +2,7 @@ spring:
   application:
     name: splitedge-backend
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/splitedge}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/splitedge}
     username: ${POSTGRES_USER:splitedge}
     password: ${POSTGRES_PASSWORD:splitedge_local}
   jpa:
