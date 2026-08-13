@@ -1,0 +1,20 @@
+[
+  {
+    "GAME_ID": "0022400001",
+    "TEAM_ID": 1610612738,
+    "TEAM_ABBREVIATION": "BOS",
+    "GAME_DATE": "2024-10-22",
+    "MATCHUP": "BOS vs. LAL",
+    "WL": "W",
+    "PTS": 110
+  },
+  {
+    "GAME_ID": "0022400001",
+    "TEAM_ID": 1610612747,
+    "TEAM_ABBREVIATION": "LAL",
+    "GAME_DATE": "2024-10-22",
+    "MATCHUP": "LAL @ BOS",
+    "WL": "L",
+    "PTS": 101
+  }
+]

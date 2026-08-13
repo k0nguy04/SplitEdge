@@ -1,0 +1,32 @@
+[
+  {
+    "GAME_ID": "0022400001",
+    "TEAM_ID": 1610612738,
+    "TEAM_ABBREVIATION": "BOS",
+    "GAME_DATE": "2024-10-22",
+    "MATCHUP": "BOS vs. LAL",
+    "WL": "W",
+    "PTS": 27,
+    "PLAYER_ID": 1628369,
+    "PLAYER_NAME": "Jayson Tatum",
+    "MIN": "36:00",
+    "REB": 9,
+    "AST": 5,
+    "FG3M": 3
+  },
+  {
+    "GAME_ID": "0022400001",
+    "TEAM_ID": 1610612747,
+    "TEAM_ABBREVIATION": "LAL",
+    "GAME_DATE": "2024-10-22",
+    "MATCHUP": "LAL @ BOS",
+    "WL": "L",
+    "PTS": 24,
+    "PLAYER_ID": 2544,
+    "PLAYER_NAME": "LeBron James",
+    "MIN": "35:20",
+    "REB": 8,
+    "AST": 7,
+    "FG3M": 2
+  }
+]

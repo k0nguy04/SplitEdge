@@ -6,9 +6,9 @@ SplitEdge is an NBA player-prop research platform that turns historical game dat
 
 ## Repository status
 
-Milestone 1 is in progress. The Python importer can load NBA teams and active
-players into PostgreSQL. Games, box scores, and matchup reports are not in this
-slice.
+Milestone 1 is in progress. The Python importer can load NBA teams, active
+players, completed regular-season games, and MVP box-score stats into PostgreSQL.
+Matchup reports are not in this slice.
 
 ## Architecture
 
@@ -41,6 +41,60 @@ slice.
 Schema changes are applied only through Flyway. Do not run the SQL migration files directly.
 
 The application is designed to support a $0/month portfolio deployment. No paid sports feed, odds provider, or AI API is required.
+
+## Importer commands
+
+Default command (teams and active players):
+
+```powershell
+python -m splitedge_importer
+python -m splitedge_importer teams-players
+```
+
+Games and box scores (completed regular-season LeagueGameLog T/P for the seasons in `NBA_IMPORT_SEASONS`):
+
+```powershell
+python -m splitedge_importer games-stats
+```
+
+Integration tests must use `splitedge_test`, never the primary `splitedge` database. Test-only minimum overrides are for pytest only; do not leave them set for a live import.
+
+### Local verification
+
+```powershell
+cd C:\Users\kevng\OneDrive\Desktop\splitedge\backend
+mvn --batch-mode flyway:migrate
+mvn --batch-mode verify
+
+cd C:\Users\kevng\OneDrive\Desktop\splitedge\importer
+python -m pip install -e ".[dev]"
+python -m ruff check .
+python -m pytest -m "not integration"
+
+$env:DATABASE_URL = "postgresql://splitedge:splitedge_local@localhost:5432/splitedge_test"
+$env:NBA_SEASON = "2025-26"
+$env:NBA_IMPORT_SEASONS = "2023-24,2024-25,2025-26"
+$env:IMPORT_MIN_TEAMS = "1"
+$env:IMPORT_MIN_ACTIVE_PLAYERS = "1"
+$env:IMPORT_MIN_GAMES_PER_SEASON = "1"
+$env:IMPORT_MIN_PLAYER_STATS_PER_SEASON = "1"
+python -m pytest -m integration
+```
+
+### Live historical import
+
+Do not run this during automated tests or CI. Remove test-only guard overrides first, then point at the primary database:
+
+```powershell
+Remove-Item Env:IMPORT_MIN_TEAMS -ErrorAction SilentlyContinue
+Remove-Item Env:IMPORT_MIN_ACTIVE_PLAYERS -ErrorAction SilentlyContinue
+Remove-Item Env:IMPORT_MIN_GAMES_PER_SEASON -ErrorAction SilentlyContinue
+Remove-Item Env:IMPORT_MIN_PLAYER_STATS_PER_SEASON -ErrorAction SilentlyContinue
+$env:DATABASE_URL = "postgresql://splitedge:splitedge_local@localhost:5432/splitedge"
+$env:NBA_SEASON = "2025-26"
+$env:NBA_IMPORT_SEASONS = "2023-24,2024-25,2025-26"
+python -m splitedge_importer games-stats
+```
 
 ## Product rules
 

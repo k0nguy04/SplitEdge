@@ -64,6 +64,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://splitedge:splitedge_local@localhost:5432/splitedge_test
       NBA_SEASON: "2025-26"
+      NBA_IMPORT_SEASONS: "2023-24,2024-25,2025-26"
       FLYWAY_URL: jdbc:postgresql://localhost:5432/splitedge_test
       POSTGRES_USER: splitedge
       POSTGRES_PASSWORD: splitedge_local
@@ -95,4 +96,9 @@ jobs:
           -Dflyway.password=splitedge_local
       - name: Test importer
         working-directory: importer
+        env:
+          IMPORT_MIN_TEAMS: "1"
+          IMPORT_MIN_ACTIVE_PLAYERS: "1"
+          IMPORT_MIN_GAMES_PER_SEASON: "1"
+          IMPORT_MIN_PLAYER_STATS_PER_SEASON: "1"
         run: python -m pytest

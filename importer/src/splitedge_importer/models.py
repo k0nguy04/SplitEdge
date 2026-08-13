@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
 
@@ -24,6 +26,50 @@ class NormalizedPlayer:
     is_active: bool
     nba_team_id: int | None
     missing_team: bool = False
+
+
+@dataclass(frozen=True)
+class NormalizedGame:
+    nba_game_id: str
+    season: str
+    game_date: date
+    home_nba_team_id: int
+    away_nba_team_id: int
+    home_score: int
+    away_score: int
+    status: str = "FINAL"
+
+
+@dataclass(frozen=True)
+class NormalizedPlayerGameStat:
+    nba_game_id: str
+    season: str
+    nba_player_id: int
+    nba_team_id: int
+    minutes: Decimal
+    points: int
+    rebounds: int
+    assists: int
+    three_pointers_made: int
+    player_name: str
+
+
+@dataclass(frozen=True)
+class HistoricalPlayerStub:
+    nba_player_id: int
+    first_name: str
+    last_name: str
+    full_name: str
+
+
+@dataclass(frozen=True)
+class CheckpointRecord:
+    import_type: str
+    season: str
+    resource: str
+    status: str
+    row_count: int
+    payload: Any = None
 
 
 @dataclass(frozen=True)

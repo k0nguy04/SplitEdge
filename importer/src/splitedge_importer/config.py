@@ -18,12 +18,16 @@ class ConfigError(ValueError):
 class Config:
     database_url: str
     nba_season: str
+    import_seasons: tuple[str, ...] = ()
     min_teams: int = 30
     min_active_players: int = 300
+    min_games_per_season: int = 1100
+    min_player_stats_per_season: int = 15000
     http_timeout_seconds: float = 30.0
     retry_max_attempts: int = 5
     retry_base_delay_seconds: float = 0.5
     retry_max_delay_seconds: float = 8.0
+    request_interval_seconds: float = 0.6
 
     @property
     def password(self) -> str | None:
@@ -49,13 +53,42 @@ def load_config(environ: dict[str, str] | None = None) -> Config:
     return Config(
         database_url=database_url,
         nba_season=nba_season,
+        import_seasons=_parse_import_seasons(env),
         min_teams=_optional_positive_int(env, "IMPORT_MIN_TEAMS", 30),
         min_active_players=_optional_positive_int(env, "IMPORT_MIN_ACTIVE_PLAYERS", 300),
+        min_games_per_season=_optional_positive_int(env, "IMPORT_MIN_GAMES_PER_SEASON", 1100),
+        min_player_stats_per_season=_optional_positive_int(
+            env, "IMPORT_MIN_PLAYER_STATS_PER_SEASON", 15000
+        ),
         http_timeout_seconds=_optional_float(env, "NBA_HTTP_TIMEOUT_SECONDS", 30.0),
         retry_max_attempts=_optional_positive_int(env, "NBA_RETRY_MAX_ATTEMPTS", 5),
         retry_base_delay_seconds=_optional_float(env, "NBA_RETRY_BASE_DELAY_SECONDS", 0.5),
         retry_max_delay_seconds=_optional_float(env, "NBA_RETRY_MAX_DELAY_SECONDS", 8.0),
+        request_interval_seconds=_optional_float(env, "NBA_REQUEST_INTERVAL_SECONDS", 0.6),
     )
+
+
+def require_import_seasons(config: Config) -> None:
+    if not config.import_seasons:
+        raise ConfigError(
+            "NBA_IMPORT_SEASONS is required for games-stats, for example 2023-24,2024-25,2025-26"
+        )
+
+
+def _parse_import_seasons(env: dict[str, str]) -> tuple[str, ...]:
+    raw = (env.get("NBA_IMPORT_SEASONS") or "").strip()
+    if not raw:
+        return ()
+    seasons: list[str] = []
+    for part in raw.split(","):
+        season = part.strip()
+        if not season:
+            continue
+        if SEASON_PATTERN.fullmatch(season) is None:
+            raise ConfigError("NBA_IMPORT_SEASONS values must match YYYY-YY, for example 2025-26")
+        if season not in seasons:
+            seasons.append(season)
+    return tuple(seasons)
 
 
 def _optional_positive_int(env: dict[str, str], name: str, default: int) -> int:

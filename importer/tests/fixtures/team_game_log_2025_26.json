@@ -1,0 +1,20 @@
+[
+  {
+    "GAME_ID": "0022500001",
+    "TEAM_ID": 1610612744,
+    "TEAM_ABBREVIATION": "GSW",
+    "GAME_DATE": "2025-10-21",
+    "MATCHUP": "GSW vs. BOS",
+    "WL": "L",
+    "PTS": 104
+  },
+  {
+    "GAME_ID": "0022500001",
+    "TEAM_ID": 1610612738,
+    "TEAM_ABBREVIATION": "BOS",
+    "GAME_DATE": "2025-10-21",
+    "MATCHUP": "BOS @ GSW",
+    "WL": "W",
+    "PTS": 112
+  }
+]

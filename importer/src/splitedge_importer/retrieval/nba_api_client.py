@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from typing import Any, NoReturn
 
+from splitedge_importer.retrieval.league_game_log import required_columns_for
 from splitedge_importer.retrieval.retry import (
     NonRetryableHttpError,
     RetryableError,
     is_retryable_status,
     retry_call,
 )
+
+REGULAR_SEASON = "Regular Season"
+
+
+class MalformedNbaPayload(ValueError):
+    """HTTP 200 body that is empty or missing required LeagueGameLog columns."""
 
 
 def _rows_from_nba_dict(payload: dict[str, Any]) -> list[dict]:
@@ -26,8 +34,27 @@ def _rows_from_nba_dict(payload: dict[str, Any]) -> list[dict]:
     return [dict(zip(headers, row, strict=False)) for row in row_set]
 
 
+def _rows_from_league_game_log(payload: dict[str, Any], *, resource: str) -> list[dict]:
+    result_sets = payload.get("resultSets")
+    if not result_sets:
+        raise MalformedNbaPayload("LeagueGameLog payload missing resultSets")
+    first = result_sets[0]
+    headers = first.get("headers") or []
+    row_set = first.get("rowSet") or []
+    if not headers:
+        raise MalformedNbaPayload("LeagueGameLog payload missing headers")
+    if not row_set:
+        raise MalformedNbaPayload("LeagueGameLog payload is empty")
+    rows = [dict(zip(headers, row, strict=False)) for row in row_set]
+    required = required_columns_for(resource)
+    for row in rows:
+        if not required.issubset(row.keys()):
+            raise MalformedNbaPayload(f"LeagueGameLog {resource} is missing required columns")
+    return rows
+
+
 class NbaApiClient:
-    """Fetches teams and active players through nba_api with retry/backoff."""
+    """Fetches NBA Stats payloads through nba_api with retry/backoff and pacing."""
 
     def __init__(
         self,
@@ -36,13 +63,20 @@ class NbaApiClient:
         retry_max_attempts: int = 5,
         retry_base_delay_seconds: float = 0.5,
         retry_max_delay_seconds: float = 8.0,
+        request_interval_seconds: float = 0.6,
         retry: Callable[..., Any] | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._timeout_seconds = timeout_seconds
         self._retry_max_attempts = retry_max_attempts
         self._retry_base_delay_seconds = retry_base_delay_seconds
         self._retry_max_delay_seconds = retry_max_delay_seconds
+        self._request_interval_seconds = request_interval_seconds
         self._retry = retry or retry_call
+        self._sleep = sleep
+        self._monotonic = monotonic
+        self._last_request_at: float | None = None
 
     def fetch_teams(self) -> list[dict]:
         from nba_api.stats.static import teams as nba_teams
@@ -50,8 +84,54 @@ class NbaApiClient:
         return [dict(team) for team in nba_teams.get_teams()]
 
     def fetch_active_players(self, season: str) -> list[dict]:
-        def _call() -> list[dict]:
+        def _build() -> Any:
             from nba_api.stats.endpoints import commonallplayers
+
+            return commonallplayers.CommonAllPlayers(
+                is_only_current_season=1,
+                league_id="00",
+                season=season,
+                timeout=self._timeout_seconds,
+            )
+
+        return self._request_rows(_build, parser=_rows_from_nba_dict)
+
+    def fetch_team_game_log(self, season: str) -> list[dict]:
+        return self._fetch_league_game_log(season, player_or_team="T", resource="team_game_log")
+
+    def fetch_player_game_log(self, season: str) -> list[dict]:
+        return self._fetch_league_game_log(season, player_or_team="P", resource="player_game_log")
+
+    def _fetch_league_game_log(
+        self,
+        season: str,
+        *,
+        player_or_team: str,
+        resource: str,
+    ) -> list[dict]:
+        def _build() -> Any:
+            from nba_api.stats.endpoints import leaguegamelog
+
+            return leaguegamelog.LeagueGameLog(
+                season=season,
+                season_type_all_star=REGULAR_SEASON,
+                player_or_team_abbreviation=player_or_team,
+                league_id="00",
+                timeout=self._timeout_seconds,
+            )
+
+        def _parse(payload: dict[str, Any]) -> list[dict]:
+            return _rows_from_league_game_log(payload, resource=resource)
+
+        return self._request_rows(_build, parser=_parse)
+
+    def _request_rows(
+        self,
+        build_endpoint: Callable[[], Any],
+        *,
+        parser: Callable[[dict[str, Any]], list[dict]],
+    ) -> list[dict]:
+        def _call() -> list[dict]:
             from nba_api.stats.library.http import NBAStatsHTTP
 
             original = NBAStatsHTTP.send_api_request
@@ -87,22 +167,28 @@ class NbaApiClient:
 
             NBAStatsHTTP.send_api_request = guarded_send  # type: ignore[method-assign]
             try:
-                endpoint = commonallplayers.CommonAllPlayers(
-                    is_only_current_season=1,
-                    league_id="00",
-                    season=season,
-                    timeout=self._timeout_seconds,
-                )
-                return _rows_from_nba_dict(endpoint.get_dict())
+                endpoint = build_endpoint()
+                return parser(endpoint.get_dict())
             finally:
                 NBAStatsHTTP.send_api_request = original  # type: ignore[method-assign]
 
-        return self._retry(
+        rows = self._retry(
             _call,
             max_attempts=self._retry_max_attempts,
             base_delay_seconds=self._retry_base_delay_seconds,
             max_delay_seconds=self._retry_max_delay_seconds,
         )
+        self._pace()
+        return rows
+
+    def _pace(self) -> None:
+        now = self._monotonic()
+        if self._last_request_at is not None:
+            wait = self._request_interval_seconds - (now - self._last_request_at)
+            if wait > 0:
+                self._sleep(wait)
+                now = self._monotonic()
+        self._last_request_at = now
 
 
 def _reraise_http_error(exc: BaseException) -> NoReturn:

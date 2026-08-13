@@ -99,3 +99,52 @@ def test_load_config_does_not_derive_season(monkeypatch) -> None:
         assert "NBA_SEASON" in str(exc)
     else:
         raise AssertionError("expected ConfigError")
+
+
+def test_cli_games_stats_success(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("NBA_SEASON", "2025-26")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://splitedge:s3cretpass@localhost:5432/splitedge")
+    monkeypatch.setenv("NBA_IMPORT_SEASONS", "2023-24,2024-25,2025-26")
+
+    def pipeline(config: object, **kwargs: object) -> ImportResult:
+        del config, kwargs
+        return ImportResult(
+            success=True,
+            run_id=9,
+            status="COMPLETED",
+            details={"games": {"persisted": 4}, "player_stats": {"persisted": 10}},
+        )
+
+    assert main(["games-stats"], games_pipeline=pipeline) == 0
+    assert "4 games" in capsys.readouterr().out
+
+
+def test_cli_games_stats_requires_import_seasons(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("NBA_SEASON", "2025-26")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://splitedge:s3cretpass@localhost:5432/splitedge")
+    monkeypatch.delenv("NBA_IMPORT_SEASONS", raising=False)
+    called = {"pipeline": False}
+
+    def pipeline(config: object, **kwargs: object) -> ImportResult:
+        del config, kwargs
+        called["pipeline"] = True
+        return ImportResult(success=True)
+
+    assert main(["games-stats"], games_pipeline=pipeline) == 2
+    assert called["pipeline"] is False
+    assert "NBA_IMPORT_SEASONS" in capsys.readouterr().err
+
+
+def test_cli_unknown_command(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("NBA_SEASON", "2025-26")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://splitedge:s3cretpass@localhost:5432/splitedge")
+    assert main(["reports"]) == 2
+    assert "games-stats" in capsys.readouterr().err
+
+
+def test_load_config_parses_import_seasons(monkeypatch) -> None:
+    monkeypatch.setenv("NBA_SEASON", "2025-26")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://splitedge:s3cretpass@localhost:5432/splitedge")
+    monkeypatch.setenv("NBA_IMPORT_SEASONS", "2023-24, 2024-25,2025-26,2023-24")
+    config = load_config()
+    assert config.import_seasons == ("2023-24", "2024-25", "2025-26")

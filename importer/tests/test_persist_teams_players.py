@@ -206,7 +206,7 @@ def test_completed_update_is_in_same_transaction_as_upserts(
     assert "deactivation" in run[4]["players"]
 
 
-def test_schema_has_no_games_tables(db_connection) -> None:
+def test_schema_has_teams_players_and_import_runs(db_connection) -> None:
     tables = {
         row[0]
         for row in db_connection.execute(
@@ -220,8 +220,6 @@ def test_schema_has_no_games_tables(db_connection) -> None:
     assert "teams" in tables
     assert "players" in tables
     assert "import_runs" in tables
-    assert "games" not in tables
-    assert "player_game_stats" not in tables
 
 
 def test_normalized_models_round_trip(db_connection, migrated_database: str) -> None:
