@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: splitedge-backend
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/splitedge}
+    username: ${POSTGRES_USER:splitedge}
+    password: ${POSTGRES_PASSWORD:splitedge_local}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+server:
+  port: ${BACKEND_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized

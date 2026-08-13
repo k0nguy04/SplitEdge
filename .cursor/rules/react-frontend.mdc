@@ -1,0 +1,13 @@
+---
+description: React and TypeScript conventions
+globs: frontend/**/*.{ts,tsx,css}
+alwaysApply: false
+---
+
+- Use strict TypeScript and accessible semantic HTML.
+- Treat API data as untrusted and model loading, empty, stale, and error states.
+- Do not use color as the only over/under indicator.
+- Preserve the dark navy, blue, cyan, green, coral, and amber product palette.
+- Avoid casino imagery, urgency, betting slips, and guaranteed-outcome language.
+- Keep charts accompanied by a textual summary or accessible alternative.
+- Add component tests for primary user behavior.

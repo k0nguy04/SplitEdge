@@ -1,0 +1,27 @@
+.env
+.idea/
+.vscode/
+*.iml
+
+# Java
+backend/target/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/vitest.config.js
+frontend/vitest.config.d.ts
+
+# Python
+importer/.venv/
+importer/.pytest_cache/
+importer/.ruff_cache/
+importer/**/__pycache__/
+importer/**/*.py[cod]
+
+# OS
+.DS_Store
+Thumbs.db

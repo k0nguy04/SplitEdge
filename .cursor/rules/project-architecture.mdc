@@ -1,0 +1,18 @@
+---
+description: SplitEdge architecture and scope rules
+alwaysApply: true
+---
+
+# SplitEdge rules
+
+- Treat `docs/PRODUCT_REQUIREMENTS.md` and the authoritative PRD as product scope.
+- Keep the backend a domain-organized modular monolith.
+- Keep Python ingestion a terminating batch process, not an always-running service.
+- Never call an external NBA source while serving a user report.
+- Store normalized source data in PostgreSQL and derive combination props at query time.
+- Every hit rate must include raw counts, a baseline comparison, and a sample-size label.
+- Do not describe historical results as guarantees, locks, or future probabilities.
+- Do not add paid APIs, hosted Redis, hosted monitoring, authentication, or live odds to the MVP.
+- Prefer the smallest complete implementation that satisfies the current milestone.
+- Add or update tests with every calculation or data-normalization change.
+- Never commit secrets, private keys, tokens, sportsbook credentials, or real production credentials.

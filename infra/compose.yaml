@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-splitedge}
+      POSTGRES_USER: ${POSTGRES_USER:-splitedge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-splitedge_local}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - splitedge-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-splitedge} -d ${POSTGRES_DB:-splitedge}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  splitedge-postgres-data:

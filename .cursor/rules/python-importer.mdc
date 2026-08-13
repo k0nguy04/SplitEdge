@@ -1,0 +1,12 @@
+---
+description: Python importer conventions
+globs: importer/**/*.py
+alwaysApply: false
+---
+
+- Target Python 3.12 with type hints.
+- Keep source retrieval, normalization, validation, and persistence separate.
+- Make every import idempotent and safe to retry.
+- Use fixture data in tests; tests must not depend on live NBA endpoints.
+- Record rejected records explicitly rather than silently dropping them.
+- Never print secrets or database connection strings.

@@ -1,0 +1,14 @@
+---
+description: Java and Spring Boot conventions
+globs: backend/**/*.java
+alwaysApply: false
+---
+
+- Use Java 21 language features conservatively and clearly.
+- Organize packages by domain, not controller/service/repository layers at the root.
+- Use records for immutable API request and response models when appropriate.
+- Validate all public API input at the boundary.
+- Keep calculation logic in deterministic, side-effect-free domain services where possible.
+- Use database migrations; do not use Hibernate schema creation.
+- Return stable error codes and do not expose stack traces.
+- Test calculation edge cases including empty samples, pushes, and combination props.
