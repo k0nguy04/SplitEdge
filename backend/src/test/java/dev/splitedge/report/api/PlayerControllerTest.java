@@ -1,14 +1,17 @@
 package dev.splitedge.report.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -68,6 +71,76 @@ class PlayerControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nbaTeamId").doesNotExist())
                 .andExpect(jsonPath("$.fullName").value("Free Agent"));
+    }
+
+    @Test
+    void activePlayersUsesTheDefaultLimitWhenOmitted() throws Exception {
+        given(playerIdentities.findActive(600))
+                .willReturn(List.of(new PlayerProfile(201939, "Stephen", "Curry", "Stephen Curry", 1610612744L, true)));
+
+        mockMvc.perform(get("/api/players"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].nbaPlayerId").value(201939))
+                .andExpect(jsonPath("$[0].fullName").value("Stephen Curry"))
+                .andExpect(jsonPath("$[0].active").value(true));
+        verify(playerIdentities).findActive(600);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 1000})
+    void activePlayersPassesAnExplicitValidLimitThrough(int limit) throws Exception {
+        given(playerIdentities.findActive(limit)).willReturn(List.of());
+
+        mockMvc.perform(get("/api/players").param("limit", String.valueOf(limit)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+        verify(playerIdentities).findActive(limit);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1", "1001", "12.5", "abc", "1e3"})
+    void activePlayersRejectsAnInvalidLimitWithoutTouchingTheRepository(String rawLimit) throws Exception {
+        mockMvc.perform(get("/api/players").param("limit", rawLimit))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("limit"));
+        verifyNoInteractions(playerIdentities);
+    }
+
+    @Test
+    void activePlayersOmitsNbaTeamIdForAnActiveFreeAgent() throws Exception {
+        given(playerIdentities.findActive(600))
+                .willReturn(List.of(new PlayerProfile(500, "Free", "Agent", "Free Agent", null, true)));
+
+        mockMvc.perform(get("/api/players"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].active").value(true))
+                .andExpect(jsonPath("$[0].nbaTeamId").doesNotExist());
+    }
+
+    @Test
+    void activePlayersReturnsEmptyArrayWhenNoActivePlayersAreStored() throws Exception {
+        given(playerIdentities.findActive(600)).willReturn(List.of());
+
+        mockMvc.perform(get("/api/players"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void activePlayersUnexpectedRepositoryFailureReturnsSafeInternalError() throws Exception {
+        willThrow(new RuntimeException("jdbc:postgresql://internal-host/secret"))
+                .given(playerIdentities)
+                .findActive(anyInt());
+
+        MvcResult result = mockMvc.perform(get("/api/players"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
+                .andReturn();
+        String body = result.getResponse().getContentAsString();
+        assertThat(body).doesNotContain("jdbc:", "secret", "RuntimeException", "internal-host");
     }
 
     @ParameterizedTest

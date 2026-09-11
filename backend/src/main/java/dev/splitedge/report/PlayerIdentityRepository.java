@@ -1,5 +1,6 @@
 package dev.splitedge.report;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -18,6 +19,14 @@ public class PlayerIdentityRepository {
             SELECT nba_player_id, first_name, last_name, full_name, is_active, nba_team_id
             FROM players
             WHERE nba_player_id = :nbaPlayerId
+            """;
+
+    private static final String FIND_ACTIVE_ORDERED = """
+            SELECT nba_player_id, first_name, last_name, full_name, is_active, nba_team_id
+            FROM players
+            WHERE is_active = TRUE
+            ORDER BY last_name ASC, first_name ASC, nba_player_id ASC
+            LIMIT :limit
             """;
 
     private final JdbcClient jdbc;
@@ -54,5 +63,24 @@ public class PlayerIdentityRepository {
                         rs.getObject("nba_team_id", Long.class),
                         rs.getBoolean("is_active")))
                 .optional();
+    }
+
+    /**
+     * Every stored active player, ordered deterministically by last name, then first
+     * name, then NBA player ID, bounded by {@code limit}. Inactive/historical players
+     * are never included here; use {@link #findProfileByNbaPlayerId} for those. The
+     * caller is responsible for validating {@code limit} before calling this method.
+     */
+    public List<PlayerProfile> findActive(int limit) {
+        return List.copyOf(jdbc.sql(FIND_ACTIVE_ORDERED)
+                .param("limit", limit)
+                .query((rs, rowNum) -> new PlayerProfile(
+                        rs.getLong("nba_player_id"),
+                        rs.getString("first_name"),
+                        rs.getString("last_name"),
+                        rs.getString("full_name"),
+                        rs.getObject("nba_team_id", Long.class),
+                        rs.getBoolean("is_active")))
+                .list());
     }
 }

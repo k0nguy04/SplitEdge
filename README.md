@@ -63,10 +63,21 @@ dedicated variables, and does not run automatically during `mvn verify`, `mvn
 
 ## Quick start
 
-1. Copy `.env.example` to `.env`.
+1. Copy `.env.example` to `.env` and fill in your own local `POSTGRES_PASSWORD`.
 2. Start PostgreSQL with `docker compose -f infra/compose.yaml up -d` if Docker is available.
-3. Start the backend from `backend/` with `mvn spring-boot:run`.
-4. Start the frontend from `frontend/` with `npm install` and `npm run dev`.
+3. Start the backend from `backend/`. **Spring Boot does not load the repo-root `.env` file automatically** - only `frontend/vite.config.ts` does that (via its `envDir` setting, for the frontend alone). Export the backend's own environment variables into the same PowerShell session before running it:
+
+   ```powershell
+   cd C:\Users\kevng\OneDrive\Desktop\splitedge\backend
+   $env:BACKEND_PORT = "8081"
+   $env:SPRING_DATASOURCE_URL = "jdbc:postgresql://localhost:5432/splitedge"
+   $env:SPRING_DATASOURCE_USERNAME = "splitedge"
+   $env:SPRING_DATASOURCE_PASSWORD = "<your local password>"
+   mvn spring-boot:run
+   ```
+
+   Omitting `$env:BACKEND_PORT` does not fall back to the value written in `.env`/`.env.example` - it falls back to `application.yml`'s own literal default, port `8080`, which will not match the frontend dev proxy's default target below.
+4. Start the frontend from `frontend/` with `npm install` and `npm run dev`. The dev server serves the browser app at `http://localhost:5173` and proxies `/api` requests to `VITE_DEV_PROXY_TARGET` (default `http://localhost:8081` - matching the `$env:BACKEND_PORT` set in step 3), so the browser itself only ever calls its own origin (`VITE_API_BASE_URL=/api`). Vite reads these repo-root `VITE_*` values because `frontend/vite.config.ts` sets `envDir` to the repository root; that mechanism is specific to Vite and does not extend to the backend process. This dev-server proxy avoids backend CORS configuration **only during local development** - it never runs in a production build. A real production deployment (frontend and backend potentially on different origins) will need its own decision later: same-origin routing, a reverse proxy, or explicit backend CORS configuration. That decision has not been made yet.
 5. Apply database migrations from `backend/` with `mvn flyway:migrate`, after setting `FLYWAY_URL`, `FLYWAY_USER`, and `FLYWAY_PASSWORD` (see [Configuration and credentials](#configuration-and-credentials)).
 6. Run importer unit tests from `importer/` with `python -m pip install -e ".[dev]"` and `python -m pytest -m "not integration"`.
 7. Run a live teams-and-players import with `python -m splitedge_importer` after setting `DATABASE_URL` and `NBA_SEASON`. Automated tests never call NBA endpoints; they use fixture data.
