@@ -4,7 +4,9 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-splitedge}
       POSTGRES_USER: ${POSTGRES_USER:-splitedge}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-splitedge_local}
+      # Required, not defaulted: copy .env.example to .env and set your own
+      # local-only value first. Never commit a real password here.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local .env file (copy .env.example first); never commit a real value}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:

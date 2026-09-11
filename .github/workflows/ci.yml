@@ -11,6 +11,29 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        # Ephemeral, runner-local service container that exists only for this job.
+        # Not the primary or local dev database/user; no repository secret needed.
+        env:
+          POSTGRES_DB: splitedge_backend_test
+          POSTGRES_USER: splitedge_ci
+          POSTGRES_PASSWORD: ci_ephemeral_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U splitedge_ci -d splitedge_backend_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # Matches IntegrationDatabaseSettings.fromEnvironment()'s Spring-standard branch.
+      # No Flyway Maven goal is needed here: GuardedPostgres applies V1-V3 itself
+      # before the guarded IT classes run.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/splitedge_backend_test
+      SPRING_DATASOURCE_USERNAME: splitedge_ci
+      SPRING_DATASOURCE_PASSWORD: ci_ephemeral_password
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -19,9 +42,9 @@ jobs:
           java-version: "21"
           cache: maven
           cache-dependency-path: backend/pom.xml
-      - name: Test backend
+      - name: Test backend (unit + guarded PostgreSQL integration)
         working-directory: backend
-        run: mvn --batch-mode verify
+        run: mvn --batch-mode -Ppostgres-it verify
 
   frontend:
     runs-on: ubuntu-latest
@@ -50,10 +73,12 @@ jobs:
     services:
       postgres:
         image: postgres:16-alpine
+        # Ephemeral, runner-local service container that exists only for this job.
+        # Not the primary or local dev password; no repository secret needed.
         env:
           POSTGRES_DB: splitedge_test
           POSTGRES_USER: splitedge
-          POSTGRES_PASSWORD: splitedge_local
+          POSTGRES_PASSWORD: ci_ephemeral_password
         ports:
           - 5432:5432
         options: >-
@@ -62,12 +87,12 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      DATABASE_URL: postgresql://splitedge:splitedge_local@localhost:5432/splitedge_test
+      DATABASE_URL: postgresql://splitedge:ci_ephemeral_password@localhost:5432/splitedge_test
       NBA_SEASON: "2025-26"
       NBA_IMPORT_SEASONS: "2023-24,2024-25,2025-26"
       FLYWAY_URL: jdbc:postgresql://localhost:5432/splitedge_test
       POSTGRES_USER: splitedge
-      POSTGRES_PASSWORD: splitedge_local
+      POSTGRES_PASSWORD: ci_ephemeral_password
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -93,7 +118,7 @@ jobs:
           mvn --batch-mode flyway:migrate
           -Dflyway.url=jdbc:postgresql://localhost:5432/splitedge_test
           -Dflyway.user=splitedge
-          -Dflyway.password=splitedge_local
+          -Dflyway.password=ci_ephemeral_password
       - name: Test importer
         working-directory: importer
         env:
