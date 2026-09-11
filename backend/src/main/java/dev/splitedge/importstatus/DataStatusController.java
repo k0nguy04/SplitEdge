@@ -1,8 +1,5 @@
 package dev.splitedge.importstatus;
 
-import java.time.Instant;
-import java.util.Map;
-
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -11,11 +8,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/data")
 public class DataStatusController {
 
+    private final DataStatusService service;
+
+    public DataStatusController(DataStatusService service) {
+        this.service = service;
+    }
+
     @GetMapping("/status")
-    public Map<String, Object> status() {
-        return Map.of(
-                "status", "foundation-ready",
-                "dataImported", false,
-                "checkedAt", Instant.now().toString());
+    public DataStatusResponse status() {
+        return DataStatusResponseMapper.toResponse(service.currentStatus());
     }
 }

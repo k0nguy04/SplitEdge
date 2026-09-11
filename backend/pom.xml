@@ -19,9 +19,20 @@
 
     <properties>
         <java.version>21</java.version>
-        <flyway.url>jdbc:postgresql://localhost:5432/splitedge</flyway.url>
-        <flyway.user>splitedge</flyway.user>
-        <flyway.password>splitedge_local</flyway.password>
+        <!--
+            No default here targets the primary splitedge database, and no default
+            here is a literal password. A manually invoked `mvn flyway:migrate` must
+            receive real values explicitly, either as FLYWAY_URL/FLYWAY_USER/
+            FLYWAY_PASSWORD environment variables, or as -Dflyway.url=/-Dflyway.user=/
+            -Dflyway.password= command-line overrides (which take precedence over
+            these property values regardless). Leaving a variable unset resolves to
+            an unresolved, invalid placeholder string, so a missing value fails fast
+            on URL/config parsing before any connection is attempted, instead of
+            silently falling back to the primary database.
+        -->
+        <flyway.url>${env.FLYWAY_URL}</flyway.url>
+        <flyway.user>${env.FLYWAY_USER}</flyway.user>
+        <flyway.password>${env.FLYWAY_PASSWORD}</flyway.password>
     </properties>
 
     <dependencies>

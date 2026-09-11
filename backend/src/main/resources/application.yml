@@ -4,7 +4,13 @@ spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/splitedge}
     username: ${POSTGRES_USER:splitedge}
-    password: ${POSTGRES_PASSWORD:splitedge_local}
+    # No literal or fallback secret here. SPRING_DATASOURCE_PASSWORD already binds to
+    # spring.datasource.password via Spring Boot's normal relaxed environment-variable
+    # binding, at higher precedence than this YAML file, so it does not need to be
+    # nested in this placeholder. POSTGRES_PASSWORD remains supported as an optional
+    # application alias. The empty terminal fallback is not a secret; it only lets
+    # database-free web-slice tests build the property source without a real database.
+    password: ${POSTGRES_PASSWORD:}
   jpa:
     open-in-view: false
     hibernate:
